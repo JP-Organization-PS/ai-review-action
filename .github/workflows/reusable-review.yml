@@ -1,0 +1,53 @@
+name: AI Code Review
+
+# This makes the workflow reusable by other workflows
+on:
+  workflow_call:
+    # Define inputs that other workflows can pass
+    inputs:
+      ai-model:
+        description: 'The AI model to use (gemini or azure)'
+        required: false
+        type: string
+        default: 'gemini'
+    # Define the secrets this workflow needs to operate
+    secrets:
+      AI_API_KEY:
+        description: 'The API key for the selected AI service'
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code of the Calling Repository
+        uses: actions/checkout@v4
+        with:
+          # We need to fetch the full history to get the diff correctly
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm' # Cache dependencies for faster runs
+
+      - name: Checkout AI Review Action Repo
+        uses: actions/checkout@v4
+        with:
+          # This checks out the code from THIS repository (the action itself)
+          repository: your-org/ai-review-action # IMPORTANT: Change 'your-org'
+          path: ./.github/actions/ai-review
+
+      - name: Install AI Review Dependencies
+        run: npm install
+        working-directory: ./.github/actions/ai-review
+
+      - name: Run AI Code Review
+        env:
+          # Pass secrets and inputs to the script as environment variables
+          AI_MODEL: ${{ inputs.ai-model }}
+          GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AZURE_OPENAI_KEY: ${{ secrets.AI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node ./.github/actions/ai-review/.github/scripts/ai-review.js

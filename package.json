@@ -6,12 +6,12 @@
   "scripts": {
     "start": "node .github/scripts/ai-review.js"
   },
-  "dependencies": {
+	"dependencies": {
     "@actions/github": "^6.0.0",
     "axios": "^1.7.2",
     "parse-diff": "^0.11.1",
     "string-similarity": "^4.0.4",
-    "tree-sitter": "^0.21.3",
+    "tree-sitter": "^0.20.8",
     "tree-sitter-c-sharp": "^0.20.0",
     "tree-sitter-cpp": "^0.20.1",
     "tree-sitter-go": "^0.20.0",

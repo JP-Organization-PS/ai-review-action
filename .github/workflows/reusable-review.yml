@@ -52,9 +52,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          # This path will now be valid because of the previous step.
-          cache-dependency-path: '.github/scripts/ai-review/package-lock.json'
 
       - name: Install AI Review Dependencies
         run: npm install

@@ -63,8 +63,6 @@ jobs:
         run: ls -R
 
       - name: Run AI Code Review
-        # Set the working directory here as well
-        working-directory: ./ai-review-action-repo
         env:
           AI_MODEL: ${{ inputs.ai-model }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -73,5 +71,5 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
-        # The path is now simple because we are in the correct directory
-        run: node ai-review.js
+        # The path now correctly points to the script inside the checked-out directory.
+        run: node ./ai-review-action-repo/.github/scripts/ai-review.js

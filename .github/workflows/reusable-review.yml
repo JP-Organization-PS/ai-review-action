@@ -43,8 +43,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JP-Organization-PS/ai-review-action
-          # The path now correctly points to the directory containing the script.
-          path: ./.github/scripts
+          # Checkout the action to a clean, top-level directory
+          path: ./ai-review-action-repo
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,14 +52,19 @@ jobs:
           node-version: '20'
 
       - name: Install AI Review Dependencies
-        # The working directory is now the scripts directory.
-        working-directory: ./.github/scripts
+        # Set the working directory to the action's checkout path
+        working-directory: ./ai-review-action-repo
         run: |
           npm install axios @actions/github parse-diff string-similarity --legacy-peer-deps
           npm install tree-sitter --legacy-peer-deps
           npm install tree-sitter-javascript tree-sitter-typescript tree-sitter-python tree-sitter-java tree-sitter-c-sharp tree-sitter-go tree-sitter-rust tree-sitter-php tree-sitter-ruby tree-sitter-c tree-sitter-cpp tree-sitter-yaml --legacy-peer-deps      
 
+      - name: List files for debugging
+        run: ls -R
+
       - name: Run AI Code Review
+        # Set the working directory here as well
+        working-directory: ./ai-review-action-repo
         env:
           AI_MODEL: ${{ inputs.ai-model }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -68,4 +73,5 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: node ./.github/scripts/ai-review.js
+        # The path is now simple because we are in the correct directory
+        run: node ai-review.js

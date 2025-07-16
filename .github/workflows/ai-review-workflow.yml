@@ -1,4 +1,4 @@
-# .github/workflows/reusable-review.yml
+# .github/workflows/ai-review-workflow.yml
 # This is the central, reusable workflow that contains the main logic.
 
 name: AI Code Review Workflow
@@ -9,7 +9,8 @@ permissions:
 
 on:
   workflow_call:
-      secrets:
+    # CORRECTED: Indentation fixed for the 'secrets' block.
+    secrets:
       GEMINI_API_KEY:
         required: false
       AZURE_OPENAI_KEY:
@@ -22,12 +23,14 @@ jobs:
       - name: Checkout Code of the Calling Repository
         uses: actions/checkout@v4
         with:
+          # Required to get the full commit history for an accurate diff.
           fetch-depth: 0
 
       - name: Checkout AI Review Action Repo
         uses: actions/checkout@v4
         with:
           repository: JP-Organization-PS/ai-review-action
+          # Checkout the action to a clean, top-level directory
           path: ./ai-review-action-repo
 
       - name: Setup Node.js
@@ -36,19 +39,21 @@ jobs:
           node-version: '20'
 
       - name: Install AI Review Dependencies
+        # Set the working directory to the action's checkout path
         working-directory: ./ai-review-action-repo
         run: npm install --legacy-peer-deps
         
       - name: Run AI Code Review
         env:
-          AI_MODEL: ${{ vars.AI_MODEL }}
-          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME }}
+          # Using fallbacks for variables makes the workflow more resilient
+          AI_MODEL: ${{ vars.AI_MODEL || 'gemini' }}
+          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME || 'gemini-pro' }}
           GEMINI_ENDPOINT_BASE: ${{ vars.GEMINI_ENDPOINT_BASE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
-          AZURE_API_VERSION: ${{ vars.AZURE_API_VERSION }}
+          AZURE_API_VERSION: ${{ vars.AZURE_API_VERSION || '2024-02-01' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node ./ai-review-action-repo/.github/scripts/ai-review.js

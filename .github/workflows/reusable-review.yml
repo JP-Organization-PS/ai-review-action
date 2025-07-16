@@ -39,36 +39,34 @@ jobs:
           # Required to get the full commit history for an accurate diff.
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          # Using a current LTS version of Node.js
-          node-version: '20'
-          # Cache npm dependencies for faster subsequent runs
-          cache: 'npm'
-          cache-dependency-path: '.github/scripts/ai-review/package-lock.json'
-
+      # --- STEP ORDER CHANGED ---
+      # STEP 1: Check out the action's code first.
       - name: Checkout AI Review Action Repo
         uses: actions/checkout@v4
         with:
-          # This checks out the code from THIS repository (the action itself).
           repository: JP-Organization-PS/ai-review-action
           path: ./.github/scripts/ai-review
 
+      # STEP 2: Now that the files exist, setup Node.js and cache dependencies.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          # This path will now be valid because of the previous step.
+          cache-dependency-path: '.github/scripts/ai-review/package-lock.json'
+
       - name: Install AI Review Dependencies
-        # This command uses the package.json file for a clean and reliable install.
         run: npm install
         working-directory: ./.github/scripts/ai-review
 
       - name: Run AI Code Review
         env:
-          # Pass all secrets and inputs to the script as environment variables.
           AI_MODEL: ${{ inputs.ai-model }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Explicitly pass the base_ref from the calling workflow's context.
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node ./.github/scripts/ai-review/ai-review.js

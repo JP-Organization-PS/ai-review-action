@@ -51,7 +51,7 @@ jobs:
           node-version: '20'
 
       - name: Install AI Review Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
         working-directory: ./.github/scripts/ai-review
 
       - name: Run AI Code Review

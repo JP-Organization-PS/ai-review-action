@@ -52,8 +52,9 @@ jobs:
 
       - name: Install AI Review Dependencies
         run: |
+          npm install axios @actions/github parse-diff string-similarity --legacy-peer-deps
           npm install tree-sitter --legacy-peer-deps
-          npm install --legacy-peer-deps
+          npm install tree-sitter-javascript tree-sitter-typescript tree-sitter-python tree-sitter-java tree-sitter-c-sharp tree-sitter-go tree-sitter-rust tree-sitter-php tree-sitter-ruby tree-sitter-c tree-sitter-cpp tree-sitter-yaml --legacy-peer-deps      
         working-directory: ./.github/scripts/ai-review
 
       - name: Run AI Code Review

@@ -6,18 +6,6 @@ const parseDiff = require('parse-diff');
 const similarity = require('string-similarity');
 const Parser = require('tree-sitter');
 
-// --- Log environment variables for debugging ---
-console.log("--- AI Review Action Starting ---");
-console.log(`AI_MODEL: ${process.env.AI_MODEL}`);
-console.log(`GEMINI_MODEL_NAME: ${process.env.GEMINI_MODEL_NAME}`);
-console.log(`GEMINI_ENDPOINT_BASE: ${process.env.GEMINI_ENDPOINT_BASE}`);
-console.log(`AZURE_OPENAI_ENDPOINT: ${process.env.AZURE_OPENAI_ENDPOINT}`);
-console.log(`AZURE_OPENAI_DEPLOYMENT: ${process.env.AZURE_OPENAI_DEPLOYMENT}`);
-console.log(`AZURE_API_VERSION: ${process.env.AZURE_API_VERSION}`);
-console.log(`GEMINI_API_KEY is set: ${!!process.env.GEMINI_API_KEY}`);
-console.log(`AZURE_OPENAI_KEY is set: ${!!process.env.AZURE_OPENAI_KEY}`);
-console.log("---------------------------------");
-// --- End of logging ---
 
 // --- Constants ---
 const TOKEN_LIMIT = 16384;

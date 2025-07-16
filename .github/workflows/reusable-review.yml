@@ -55,12 +55,9 @@ jobs:
         # Set the working directory to the action's checkout path
         working-directory: ./ai-review-action-repo
         run: |
-          npm install axios @actions/github parse-diff string-similarity --legacy-peer-deps
-          npm install tree-sitter --legacy-peer-deps
-          npm install tree-sitter-javascript tree-sitter-typescript tree-sitter-python tree-sitter-java tree-sitter-c-sharp tree-sitter-go tree-sitter-rust tree-sitter-php tree-sitter-ruby tree-sitter-c tree-sitter-cpp tree-sitter-yaml --legacy-peer-deps      
-
-      - name: List files for debugging
-        run: ls -R
+          npm install axios@^1.7.2 @actions/github@^6.0.0 parse-diff@^0.11.1 string-similarity@^4.0.4 --legacy-peer-deps
+          npm install tree-sitter@^0.20.8 --legacy-peer-deps
+          npm install tree-sitter-javascript@^0.20.1 tree-sitter-typescript@^0.20.3 tree-sitter-python@^0.20.5 tree-sitter-java@^0.20.2 tree-sitter-c-sharp@^0.20.0 tree-sitter-go@^0.20.0 tree-sitter-rust@^0.20.5 tree-sitter-php@^0.20.0 tree-sitter-ruby@^0.20.0 tree-sitter-c@^0.20.0 tree-sitter-cpp@^0.20.1 --legacy-peer-deps
 
       - name: Run AI Code Review
         env:
@@ -71,5 +68,4 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
-        # The path now correctly points to the script inside the checked-out directory.
         run: node ./ai-review-action-repo/.github/scripts/ai-review.js

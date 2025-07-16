@@ -39,15 +39,12 @@ jobs:
           # Required to get the full commit history for an accurate diff.
           fetch-depth: 0
 
-      # --- STEP ORDER CHANGED ---
-      # STEP 1: Check out the action's code first.
       - name: Checkout AI Review Action Repo
         uses: actions/checkout@v4
         with:
           repository: JP-Organization-PS/ai-review-action
           path: ./.github/scripts/ai-review
 
-      # STEP 2: Now that the files exist, setup Node.js and cache dependencies.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

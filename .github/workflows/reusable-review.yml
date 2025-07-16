@@ -43,7 +43,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JP-Organization-PS/ai-review-action
-          path: ./.github/scripts/ai-review
+          # The path now correctly points to the directory containing the script.
+          path: ./.github/scripts
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,11 +52,12 @@ jobs:
           node-version: '20'
 
       - name: Install AI Review Dependencies
+        # The working directory is now the scripts directory.
+        working-directory: ./.github/scripts
         run: |
           npm install axios @actions/github parse-diff string-similarity --legacy-peer-deps
           npm install tree-sitter --legacy-peer-deps
           npm install tree-sitter-javascript tree-sitter-typescript tree-sitter-python tree-sitter-java tree-sitter-c-sharp tree-sitter-go tree-sitter-rust tree-sitter-php tree-sitter-ruby tree-sitter-c tree-sitter-cpp tree-sitter-yaml --legacy-peer-deps      
-        working-directory: ./.github/scripts/ai-review
 
       - name: Run AI Code Review
         env:
@@ -66,4 +68,4 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: node ./.github/scripts/ai-review/ai-review.js
+        run: node ./.github/scripts/ai-review.js

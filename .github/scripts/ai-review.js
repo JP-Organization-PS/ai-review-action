@@ -629,7 +629,7 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
 
 /**
  * Finds and dismisses any stale, pending reviews for the current user on the PR.
- * This cleans up the state from previous failed runs.
+ * This version uses the github.context.actor instead of an API call to avoid permission errors.
  * @param {object} octokit An authenticated Octokit instance.
  * @param {string} owner The repository owner.
  * @param {string} repo The repository name.
@@ -637,12 +637,12 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
  * @returns {Promise<void>}
  */
 async function dismissStaleReviews(octokit, owner, repo, prNumber) {
+    console.log('--- Starting Stale Review Cleanup ---');
     try {
-        // Get the login of the user the token belongs to
-        const { data: currentUser } = await octokit.rest.users.getAuthenticated();
-        const actorLogin = currentUser.login;
-
-        console.log(`Checking for stale reviews from user: ${actorLogin}`);
+        // --- FIX: Get the actor's login directly from the context ---
+        // This avoids the API call that was causing the permission error.
+        const actorLogin = github.context.actor;
+        console.log(`Checking for stale reviews from actor: ${actorLogin}`);
 
         const { data: reviews } = await octokit.rest.pulls.listReviews({
             owner,
@@ -655,7 +655,7 @@ async function dismissStaleReviews(octokit, owner, repo, prNumber) {
         );
 
         if (pendingReviews.length > 0) {
-            console.log(`Found ${pendingReviews.length} stale pending review(s). Dismissing...`);
+            console.log(`Found ${pendingReviews.length} stale pending review(s) from ${actorLogin}. Dismissing...`);
             for (const review of pendingReviews) {
                 await octokit.rest.pulls.dismissReview({
                     owner,
@@ -667,12 +667,13 @@ async function dismissStaleReviews(octokit, owner, repo, prNumber) {
             }
             console.log('Successfully dismissed stale reviews.');
         } else {
-            console.log('No stale pending reviews found.');
+            console.log('No stale pending reviews found for the current actor.');
         }
     } catch (error) {
-        console.error('Failed to dismiss stale reviews:', error.message);
-        // We don't want to kill the whole process, but we log the error.
+        console.error('An error occurred during the stale review cleanup process. Halting to prevent further errors.');
+        throw error;
     }
+    console.log('--- Finished Stale Review Cleanup ---');
 }
 
 // --- Main Review Logic ---
@@ -753,7 +754,7 @@ async function reviewCode() {
     // --- FIX: Add this call to clean up before proceeding ---
     await dismissStaleReviews(octokit, owner, repo, prNumber);
     // --- END FIX ---
-    
+
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));
     const summaryMarkdown = generateReviewSummary(overallSummaries, allHighlights, filteredIssues);
 

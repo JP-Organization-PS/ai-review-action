@@ -627,6 +627,54 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
     }
 }
 
+/**
+ * Finds and dismisses any stale, pending reviews for the current user on the PR.
+ * This cleans up the state from previous failed runs.
+ * @param {object} octokit An authenticated Octokit instance.
+ * @param {string} owner The repository owner.
+ * @param {string} repo The repository name.
+ * @param {number} prNumber The pull request number.
+ * @returns {Promise<void>}
+ */
+async function dismissStaleReviews(octokit, owner, repo, prNumber) {
+    try {
+        // Get the login of the user the token belongs to
+        const { data: currentUser } = await octokit.rest.users.getAuthenticated();
+        const actorLogin = currentUser.login;
+
+        console.log(`Checking for stale reviews from user: ${actorLogin}`);
+
+        const { data: reviews } = await octokit.rest.pulls.listReviews({
+            owner,
+            repo,
+            pull_number: prNumber,
+        });
+
+        const pendingReviews = reviews.filter(
+            (review) => review.state === 'PENDING' && review.user.login === actorLogin
+        );
+
+        if (pendingReviews.length > 0) {
+            console.log(`Found ${pendingReviews.length} stale pending review(s). Dismissing...`);
+            for (const review of pendingReviews) {
+                await octokit.rest.pulls.dismissReview({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    review_id: review.id,
+                    message: 'Dismissing stale review from a previous failed action run.',
+                });
+            }
+            console.log('Successfully dismissed stale reviews.');
+        } else {
+            console.log('No stale pending reviews found.');
+        }
+    } catch (error) {
+        console.error('Failed to dismiss stale reviews:', error.message);
+        // We don't want to kill the whole process, but we log the error.
+    }
+}
+
 // --- Main Review Logic ---
 
 /**
@@ -702,6 +750,10 @@ async function reviewCode() {
     const commitId = github.context.payload.pull_request?.head?.sha;
     if (!commitId) { console.error("Could not determine commit ID."); process.exit(1); }
 
+    // --- FIX: Add this call to clean up before proceeding ---
+    await dismissStaleReviews(octokit, owner, repo, prNumber);
+    // --- END FIX ---
+    
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));
     const summaryMarkdown = generateReviewSummary(overallSummaries, allHighlights, filteredIssues);
 

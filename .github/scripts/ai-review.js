@@ -568,21 +568,22 @@ async function postIssueComments(octokit, owner, repo, prNumber, commitId, issue
 }
 
 /**
- * Posts all individual review comments in a single batched API call.
- * NOTE: This will still create a separate review submission on the PR.
+ * Posts the complete review, including a summary and all inline comments, in a single API call.
+ * This is the correct way to avoid API errors and multiple notifications.
  * @param {object} octokit An authenticated Octokit instance.
  * @param {string} owner The repository owner.
  * @param {string} repo The repository name.
  * @param {number} prNumber The pull request number.
  * @param {string} commitId The SHA of the head commit.
+ * @param {string} summaryMarkdown The Markdown summary for the review.
  * @param {object[]} issues An array of issue objects to comment on.
  * @param {string} fullDiff The entire git diff string for snippet matching.
  * @returns {Promise<void>}
  */
-async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, issues, fullDiff) {
+async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, summaryMarkdown, issues, fullDiff) {
     const reviewComments = [];
 
-    // 1. Build the array of inline comment objects from the issues
+    // Build the array of inline comment objects
     for (const issue of issues) {
         let commentLine;
         const body = `**AI Suggestion: ${issue.title}** (${issue.severity})\n\n${issue.description}\n\n**Suggestion:**\n${issue.suggestion}\n\n${issue.proposed_code_snippet ? `\`\`\`suggestion\n${issue.proposed_code_snippet}\n\`\`\`` : ''}`;
@@ -591,11 +592,12 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, is
             commentLine = issue.functionStartLine;
         } else {
             const snippetLocation = matchSnippetFromDiff(fullDiff, issue.file, issue.code_snippet);
-            if (!snippetLocation) {
-                console.warn(`Could not find diff location for "${issue.title}" in ${issue.file}. Skipping inline comment.`);
-                continue;
+            if (snippetLocation) {
+                commentLine = snippetLocation.start;
+            } else {
+                console.warn(`Could not find exact diff location for "${issue.title}" in ${issue.file}. Skipping inline comment.`);
+                continue; 
             }
-            commentLine = snippetLocation.start;
         }
 
         if (commentLine) {
@@ -607,22 +609,21 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, is
             });
         }
     }
-    
-    // 2. If there are comments, submit them in a single review without a summary body.
-    if (reviewComments.length > 0) {
-        try {
-            await octokit.rest.pulls.createReview({
-                owner,
-                repo,
-                pull_number: prNumber,
-                commit_id: commitId,
-                comments: reviewComments, 
-                event: 'COMMENT', 
-            });
-            console.log(`Successfully posted a batch of ${reviewComments.length} inline comments.`);
-        } catch (commentError) {
-            console.error(`Failed to post batched comments:`, commentError.message);
-        }
+
+    // Make a single API call to submit the review with both summary and comments
+    try {
+        await octokit.rest.pulls.createReview({
+            owner,
+            repo,
+            pull_number: prNumber,
+            commit_id: commitId,
+            event: 'COMMENT',
+            body: summaryMarkdown,      // The main summary comment
+            comments: reviewComments,   // The array of inline comments
+        });
+        console.log(`Successfully submitted review with summary and ${reviewComments.length} inline comments.`);
+    } catch (error) {
+        console.error('Failed to submit the complete review:', error.message);
     }
 }
 
@@ -703,12 +704,8 @@ async function reviewCode() {
 
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));
     const summaryMarkdown = generateReviewSummary(overallSummaries, allHighlights, filteredIssues);
-    if (POST_REVIEW_SUMMARY) {
-        await postReviewSummary(octokit, owner, repo, prNumber, commitId, summaryMarkdown);
-    } else {
-        console.log('Skipping posting review summary as POST_REVIEW_SUMMARY is set to false.');
-    }
-    await postAllIssueComments(octokit, owner, repo, prNumber, commitId, filteredIssues, fullDiff);
+
+    await postAllIssueComments(octokit, owner, repo, prNumber, commitId, summaryMarkdown, filteredIssues, fullDiff);
     
 
     console.log('\nAI Code Review complete.');

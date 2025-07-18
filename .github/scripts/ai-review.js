@@ -616,7 +616,8 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, is
                 repo,
                 pull_number: prNumber,
                 commit_id: commitId,
-                comments: reviewComments, // Submit only the array of inline comments
+                comments: reviewComments, 
+                event: 'COMMENT', 
             });
             console.log(`Successfully posted a batch of ${reviewComments.length} inline comments.`);
         } catch (commentError) {

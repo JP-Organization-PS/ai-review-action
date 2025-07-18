@@ -26,6 +26,21 @@ const AZURE_API_VERSION = process.env.AZURE_API_VERSION;
 const GEMINI_ENDPOINT_BASE = process.env.GEMINI_ENDPOINT_BASE;
 const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME;
 
+const POST_REVIEW_SUMMARY = process.env.POST_REVIEW_SUMMARY !== 'false';
+
+// --- Log Configuration at Startup ---
+console.log('==============================');
+console.log(' AI Review Action Configuration');
+console.log('==============================');
+console.log('AI_MODEL:', AI_MODEL);
+console.log('GEMINI_MODEL_NAME:', GEMINI_MODEL_NAME);
+console.log('GEMINI_ENDPOINT_BASE:', GEMINI_ENDPOINT_BASE);
+console.log('AZURE_OPENAI_ENDPOINT:', AZURE_OPENAI_ENDPOINT);
+console.log('AZURE_OPENAI_DEPLOYMENT:', AZURE_OPENAI_DEPLOYMENT);
+console.log('AZURE_API_VERSION:', AZURE_API_VERSION);
+console.log('POST_REVIEW_SUMMARY:', POST_REVIEW_SUMMARY);
+console.log('==============================');
+
 const AZURE_CONFIG = {
     key: process.env.AZURE_OPENAI_KEY,
     endpoint: `${AZURE_OPENAI_ENDPOINT}/openai/deployments/${AZURE_OPENAI_DEPLOYMENT}/chat/completions?api-version=${AZURE_API_VERSION}`,
@@ -148,7 +163,7 @@ function matchSnippetFromDiff(diffText, filePath, codeSnippet) {
             const window = chunk.changes.slice(i, i + snippetLines.length);
             const windowText = window.map(c => normalizeLine(c.content)).join('\n');
             if (similarity.compareTwoStrings(snippetText, windowText) >= SIMILARITY_THRESHOLD) {
-                console.log(`✅ Found fuzzy match for snippet in ${filePath}`);
+                console.log(`Found fuzzy match for snippet in ${filePath}`);
                 const firstAddedChange = window.find(c => c.add);
                 if (firstAddedChange) {
                     const lastChange = window[window.length - 1];
@@ -159,7 +174,7 @@ function matchSnippetFromDiff(diffText, filePath, codeSnippet) {
             }
         }
     }
-    console.warn(`❌ No match found for snippet in file: ${filePath}`);
+    console.warn(`No match found for snippet in file: ${filePath}`);
 
     console.log("\n--- Snippet that failed to match ---\n");
     console.log(codeSnippet);
@@ -222,7 +237,7 @@ function chunkByFunction(filePath, parsedFile, promptTokens, tokenLimit) {
         const uniqueFunctionChunks = Array.from(new Map(functionChunks.map(c => [c.startLine, c])).values());
         return uniqueFunctionChunks.length > 0 ? uniqueFunctionChunks : null;
     } catch (error) {
-        console.warn(`   - ⚠️ Failed to chunk ${filePath} by function: ${error.message}`);
+        console.warn(`   - Failed to chunk ${filePath} by function: ${error.message}`);
         if (error.code === 'MODULE_NOT_FOUND') {
             console.warn(`   - HINT: Did you install the grammar? Try 'npm install ${config.module}'`);
         }
@@ -380,7 +395,7 @@ async function callAIModel(modelName, prompt, promptTokens) {
             if (modelName === 'azure') {
                 const { endpoint, key } = AZURE_CONFIG;
                 res = await axios.post(endpoint,
-                    { messages: [{ role: "system", content: "You are a professional code reviewer." }, { role: "user", content: prompt }], temperature: 0.3, max_tokens: availableOutputTokens },
+                    { messages: [{ role: "user", content: prompt }], temperature: 0.3, max_tokens: availableOutputTokens },
                     { headers: { 'api-key': key, 'Content-Type': 'application/json' } }
                 );
                 return res.data.choices?.[0]?.message?.content?.trim();
@@ -536,7 +551,7 @@ async function postIssueComments(octokit, owner, repo, prNumber, commitId, issue
                 console.warn(`Could not find exact diff location for "${issue.title}" in ${issue.file}. Posting as a file-level comment.`);
                 commentLine = 1;
                 // Prepend a note to the body explaining the situation
-                body = `**⚠️ AI Suggestion (could not pinpoint exact line): ${issue.title}** (${issue.severity})\n\n> This comment is placed at the top of the file because the exact location of the code snippet could not be found in the diff.\n\n---\n\n` + body;
+                body = `**AI Suggestion (could not pinpoint exact line): ${issue.title}** (${issue.severity})\n\n> This comment is placed at the top of the file because the exact location of the code snippet could not be found in the diff.\n\n---\n\n` + body;
             }
             // --- MODIFICATION END ---
         }
@@ -552,6 +567,63 @@ async function postIssueComments(octokit, owner, repo, prNumber, commitId, issue
     }
 }
 
+/**
+ * Posts all individual review comments in a single batched API call.
+ * NOTE: This will still create a separate review submission on the PR.
+ * @param {object} octokit An authenticated Octokit instance.
+ * @param {string} owner The repository owner.
+ * @param {string} repo The repository name.
+ * @param {number} prNumber The pull request number.
+ * @param {string} commitId The SHA of the head commit.
+ * @param {object[]} issues An array of issue objects to comment on.
+ * @param {string} fullDiff The entire git diff string for snippet matching.
+ * @returns {Promise<void>}
+ */
+async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, issues, fullDiff) {
+    const reviewComments = [];
+
+    // 1. Build the array of inline comment objects from the issues
+    for (const issue of issues) {
+        let commentLine;
+        const body = `**AI Suggestion: ${issue.title}** (${issue.severity})\n\n${issue.description}\n\n**Suggestion:**\n${issue.suggestion}\n\n${issue.proposed_code_snippet ? `\`\`\`suggestion\n${issue.proposed_code_snippet}\n\`\`\`` : ''}`;
+
+        if (issue.chunkType === 'function') {
+            commentLine = issue.functionStartLine;
+        } else {
+            const snippetLocation = matchSnippetFromDiff(fullDiff, issue.file, issue.code_snippet);
+            if (!snippetLocation) {
+                console.warn(`Could not find diff location for "${issue.title}" in ${issue.file}. Skipping inline comment.`);
+                continue;
+            }
+            commentLine = snippetLocation.start;
+        }
+
+        if (commentLine) {
+            reviewComments.push({
+                path: issue.file,
+                line: commentLine,
+                side: 'RIGHT',
+                body: body
+            });
+        }
+    }
+    
+    // 2. If there are comments, submit them in a single review without a summary body.
+    if (reviewComments.length > 0) {
+        try {
+            await octokit.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: prNumber,
+                commit_id: commitId,
+                comments: reviewComments, // Submit only the array of inline comments
+            });
+            console.log(`Successfully posted a batch of ${reviewComments.length} inline comments.`);
+        } catch (commentError) {
+            console.error(`Failed to post batched comments:`, commentError.message);
+        }
+    }
+}
 
 // --- Main Review Logic ---
 
@@ -569,25 +641,25 @@ async function reviewCode() {
 
     for (const file of fileChunks) {
         const { filePath, diff: fileDiffText, parsedFile } = file;
-        console.log(`\n---\n📄 Reviewing file: ${filePath}`);
+        console.log(`\n---\n Reviewing file: ${filePath}`);
         const diffTokens = estimateTokens(fileDiffText);
         let chunksToProcess = [];
         let promptTokensForChunking = baseDiffPromptTokens;
 
         if (promptTokensForChunking + diffTokens > TOKEN_LIMIT) {
-            console.log(`   - ❗ File diff is large (${diffTokens} tokens), attempting to split by function (Level 2)...`);
+            console.log(`   - File diff is large (${diffTokens} tokens), attempting to split by function (Level 2)...`);
             promptTokensForChunking = baseFunctionPromptTokens;
             chunksToProcess = chunkByFunction(filePath, parsedFile, promptTokensForChunking, TOKEN_LIMIT);
             if (chunksToProcess && chunksToProcess.length > 0) {
-                console.log(`   - ✅ Successfully split into ${chunksToProcess.length} function-based chunks.`);
+                console.log(`   - Successfully split into ${chunksToProcess.length} function-based chunks.`);
             } else {
-                console.log(`   - ⚠️ Could not split by function. Falling back to line-based chunking (Level 3)...`);
+                console.log(`   - Could not split by function. Falling back to line-based chunking (Level 3)...`);
                 promptTokensForChunking = baseDiffPromptTokens;
                 chunksToProcess = splitLargeFileChunks(parsedFile, promptTokensForChunking, TOKEN_LIMIT);
-                console.log(`   - ✅ Split into ${chunksToProcess.length} token-aware diff chunks.`);
+                console.log(`   - Split into ${chunksToProcess.length} token-aware diff chunks.`);
             }
         } else {
-            console.log(`   - ✅ Reviewing entire file diff (${diffTokens} tokens) as a single chunk (Level 1).`);
+            console.log(`   - Reviewing entire file diff (${diffTokens} tokens) as a single chunk (Level 1).`);
             chunksToProcess = [{ type: 'diff', chunkText: fileDiffText, filePath }];
         }
 
@@ -630,8 +702,13 @@ async function reviewCode() {
 
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));
     const summaryMarkdown = generateReviewSummary(overallSummaries, allHighlights, filteredIssues);
-    await postReviewSummary(octokit, owner, repo, prNumber, commitId, summaryMarkdown);
-    await postIssueComments(octokit, owner, repo, prNumber, commitId, filteredIssues, fullDiff);
+    if (POST_REVIEW_SUMMARY) {
+        await postReviewSummary(octokit, owner, repo, prNumber, commitId, summaryMarkdown);
+    } else {
+        console.log('Skipping posting review summary as POST_REVIEW_SUMMARY is set to false.');
+    }
+    await postAllIssueComments(octokit, owner, repo, prNumber, commitId, filteredIssues, fullDiff);
+    
 
     console.log('\nAI Code Review complete.');
 }

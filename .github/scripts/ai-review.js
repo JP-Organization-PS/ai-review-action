@@ -628,8 +628,8 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
 }
 
 /**
- * Finds and dismisses any stale, pending reviews for the current user on the PR.
- * This version uses the github.context.actor instead of an API call to avoid permission errors.
+ * Finds and dismisses any stale, pending reviews left by bots (like github-actions).
+ * This correctly targets reviews created by the action itself, regardless of who triggered the workflow.
  * @param {object} octokit An authenticated Octokit instance.
  * @param {string} owner The repository owner.
  * @param {string} repo The repository name.
@@ -639,23 +639,20 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
 async function dismissStaleReviews(octokit, owner, repo, prNumber) {
     console.log('--- Starting Stale Review Cleanup ---');
     try {
-        // --- FIX: Get the actor's login directly from the context ---
-        // This avoids the API call that was causing the permission error.
-        const actorLogin = github.context.actor;
-        console.log(`Checking for stale reviews from actor: ${actorLogin}`);
-
         const { data: reviews } = await octokit.rest.pulls.listReviews({
             owner,
             repo,
             pull_number: prNumber,
         });
 
+        // --- FIX: Filter for pending reviews where the user is a 'Bot' ---
+        // This correctly identifies reviews left by the 'github-actions' user.
         const pendingReviews = reviews.filter(
-            (review) => review.state === 'PENDING' && review.user.login === actorLogin
+            (review) => review.state === 'PENDING' && review.user.type === 'Bot'
         );
 
         if (pendingReviews.length > 0) {
-            console.log(`Found ${pendingReviews.length} stale pending review(s) from ${actorLogin}. Dismissing...`);
+            console.log(`Found ${pendingReviews.length} stale pending bot review(s). Dismissing...`);
             for (const review of pendingReviews) {
                 await octokit.rest.pulls.dismissReview({
                     owner,
@@ -667,7 +664,7 @@ async function dismissStaleReviews(octokit, owner, repo, prNumber) {
             }
             console.log('Successfully dismissed stale reviews.');
         } else {
-            console.log('No stale pending reviews found for the current actor.');
+            console.log('No stale pending bot reviews found.');
         }
     } catch (error) {
         console.error('An error occurred during the stale review cleanup process. Halting to prevent further errors.');

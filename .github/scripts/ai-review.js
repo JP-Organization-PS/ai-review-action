@@ -26,7 +26,10 @@ const AZURE_API_VERSION = process.env.AZURE_API_VERSION;
 const GEMINI_ENDPOINT_BASE = process.env.GEMINI_ENDPOINT_BASE;
 const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME;
 
+// NEW: Configuration flags for summary sections
 const POST_REVIEW_SUMMARY = process.env.POST_REVIEW_SUMMARY !== 'false';
+const POST_REVIEW_HIGHLIGHTS = process.env.POST_REVIEW_HIGHLIGHTS !== 'false';
+const POST_DETECTED_ISSUES = process.env.POST_DETECTED_ISSUES !== 'false';
 
 // --- Log Configuration at Startup ---
 console.log('==============================');
@@ -39,6 +42,8 @@ console.log('AZURE_OPENAI_ENDPOINT:', AZURE_OPENAI_ENDPOINT);
 console.log('AZURE_OPENAI_DEPLOYMENT:', AZURE_OPENAI_DEPLOYMENT);
 console.log('AZURE_API_VERSION:', AZURE_API_VERSION);
 console.log('POST_REVIEW_SUMMARY:', POST_REVIEW_SUMMARY);
+console.log('POST_REVIEW_HIGHLIGHTS:', POST_REVIEW_HIGHLIGHTS);
+console.log('POST_DETECTED_ISSUES:', POST_DETECTED_ISSUES);
 console.log('==============================');
 
 const AZURE_CONFIG = {
@@ -516,51 +521,54 @@ async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
 }
 
 /**
- * Generates a Markdown summary of the entire code review, including a detailed list of issues
- * sorted by severity (Critical -> Major -> Minor -> Info). This version does not include emojis.
+ * Generates a configurable Markdown summary of the code review.
+ * Sections can be toggled via environment variables.
  */
 function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) {
-    const highlightItems = [...allHighlights].map(p => {
-        if (typeof p === 'string') {
-            return `- ${p}`;
-        }
-        if (typeof p === 'object' && p !== null) {
-            if (p.category && p.description) {
-                return `- ${p.category}: ${p.description}`;
+    let summaryParts = [];
+
+    // Conditionally add the "Overall Impression" section
+    if (POST_REVIEW_SUMMARY && overallSummaries.length > 0) {
+        summaryParts.push(`**📝 Overall Impression:**\n${overallSummaries.join("\n\n")}`);
+    }
+
+    // Conditionally add the "Highlights" section
+    if (POST_REVIEW_HIGHLIGHTS) {
+        const highlightItems = [...allHighlights].map(p => {
+            if (typeof p === 'string') return `- ${p}`;
+            if (typeof p === 'object' && p !== null) {
+                if (p.category && p.description) return `- ${p.category}: ${p.description}`;
+                return `- ${JSON.stringify(p)}`;
             }
-            return `- ${JSON.stringify(p)}`;
-        }
-        return `- ${p}`;
-    }).join('\n');
+            return `- ${p}`;
+        }).join('\n');
+        summaryParts.push(`**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`);
+    }
 
-    let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n")}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
-    
-    if (filteredIssues.length) {
-        // Define the desired order of severity.
-        const severityOrder = {
-            'CRITICAL': 1,
-            'MAJOR': 2,
-            'MINOR': 3,
-            'INFO': 4
-        };
-
-        // Sort the filteredIssues array based on the severityOrder map.
+    // Conditionally add the "Detected Issues" section
+    if (POST_DETECTED_ISSUES && filteredIssues.length > 0) {
+        const severityOrder = { 'CRITICAL': 1, 'MAJOR': 2, 'MINOR': 3, 'INFO': 4 };
         filteredIssues.sort((a, b) => {
-            const severityA = severityOrder[a.severity] || 99; // Use 99 for any unknown severities to place them at the end.
+            const severityA = severityOrder[a.severity] || 99;
             const severityB = severityOrder[b.severity] || 99;
             return severityA - severityB;
         });
 
-        summary += `\n\n<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary><br>\n`;
-        
-        // This loop processes the issues in the sorted order.
+        let issuesMarkdown = `<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary>\n`;
         for (const issue of filteredIssues) {
-            // The emoji variable has been removed from the summary string below.
-            summary += `\n- <details>\n  <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n  **📁 File:** \`${issue.file}\` \n  **🔢 Line:** ${issue.line || 'N/A'}\n\n  **📝 Description:** \n  ${issue.description}\n\n  **💡 Suggestion:** \n  ${issue.suggestion}\n  </details>`;
+            issuesMarkdown += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n **📁 File:** \`${issue.file}\` \n **🔢 Line:** ${issue.line || 'N/A'}\n\n **📝 Description:** \n ${issue.description}\n\n **💡 Suggestion:** \n ${issue.suggestion}\n </details>`;
         }
-        summary += `\n</details>`;
+        issuesMarkdown += `\n</details>`;
+        summaryParts.push(issuesMarkdown);
     }
-    return summary;
+
+    // If no parts were added, return an empty string to prevent posting.
+    if (summaryParts.length === 0) {
+        return "";
+    }
+
+    // Join all the parts into a final summary.
+    return `### AI Code Review Summary\n\n` + summaryParts.join('\n\n');
 }
 
 /**
@@ -675,15 +683,19 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
 
     // Make a single API call to submit the review with both summary and comments
     try {
-        await octokit.rest.pulls.createReview({
+        const reviewOptions = {
             owner,
             repo,
             pull_number: prNumber,
             commit_id: commitId,
             event: 'COMMENT',
-            body: summaryMarkdown,      // The main summary comment
-            comments: reviewComments,   // The array of inline comments
-        });
+            comments: reviewComments,
+        };
+        if (summaryMarkdown && summaryMarkdown.trim()) {
+            reviewOptions.body = summaryMarkdown;
+        }
+        await octokit.rest.pulls.createReview(reviewOptions);
+
         console.log(`Successfully submitted review with summary and ${reviewComments.length} inline comments.`);
     } catch (error) {
         console.error('Failed to submit the complete review:', error.message);

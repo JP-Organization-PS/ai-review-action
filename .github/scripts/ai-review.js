@@ -628,16 +628,16 @@ async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, su
 }
 
 /**
- * Finds and dismisses any stale, pending reviews left by bots (like github-actions).
- * This correctly targets reviews created by the action itself, regardless of who triggered the workflow.
+ * Finds and forcefully submits any stale, pending reviews left by bots.
+ * This is the correct way to clear a pending state, as the API does not allow dismissing pending reviews.
  * @param {object} octokit An authenticated Octokit instance.
  * @param {string} owner The repository owner.
  * @param {string} repo The repository name.
  * @param {number} prNumber The pull request number.
  * @returns {Promise<void>}
  */
-async function dismissStaleReviews(octokit, owner, repo, prNumber) {
-    console.log('--- Starting Stale Review Cleanup ---');
+async function submitStaleReviews(octokit, owner, repo, prNumber) {
+    console.log('--- Starting Stale Review Cleanup (Submit Strategy) ---');
     try {
         const { data: reviews } = await octokit.rest.pulls.listReviews({
             owner,
@@ -645,29 +645,28 @@ async function dismissStaleReviews(octokit, owner, repo, prNumber) {
             pull_number: prNumber,
         });
 
-        // --- FIX: Filter for pending reviews where the user is a 'Bot' ---
-        // This correctly identifies reviews left by the 'github-actions' user.
         const pendingReviews = reviews.filter(
             (review) => review.state === 'PENDING' && review.user.type === 'Bot'
         );
 
         if (pendingReviews.length > 0) {
-            console.log(`Found ${pendingReviews.length} stale pending bot review(s). Dismissing...`);
+            console.log(`Found ${pendingReviews.length} stale pending bot review(s). Forcefully submitting...`);
             for (const review of pendingReviews) {
-                await octokit.rest.pulls.dismissReview({
+                await octokit.rest.pulls.submitReview({
                     owner,
                     repo,
                     pull_number: prNumber,
                     review_id: review.id,
-                    message: 'Dismissing stale review from a previous failed action run.',
+                    event: 'COMMENT', // We must provide an event to submit. 'COMMENT' is neutral.
+                    body: 'Submitting a stale review from a previous failed or timed-out action run.',
                 });
+                console.log(`Successfully submitted stale review ID: ${review.id}`);
             }
-            console.log('Successfully dismissed stale reviews.');
         } else {
-            console.log('No stale pending bot reviews found.');
+            console.log('No stale pending bot reviews found to submit.');
         }
     } catch (error) {
-        console.error('An error occurred during the stale review cleanup process. Halting to prevent further errors.');
+        console.error('An error occurred during the stale review cleanup process.');
         throw error;
     }
     console.log('--- Finished Stale Review Cleanup ---');
@@ -749,7 +748,7 @@ async function reviewCode() {
     if (!commitId) { console.error("Could not determine commit ID."); process.exit(1); }
 
     // --- FIX: Add this call to clean up before proceeding ---
-    await dismissStaleReviews(octokit, owner, repo, prNumber);
+    await submitStaleReviews(octokit, owner, repo, prNumber);
     // --- END FIX ---
 
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));

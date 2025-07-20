@@ -556,7 +556,8 @@ function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) 
 
         let issuesMarkdown = `<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary>\n`;
         for (const issue of filteredIssues) {
-            issuesMarkdown += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n **📁 File:** \`${issue.file}\` \n **🔢 Line:** ${issue.line || 'N/A'}\n\n **📝 Description:** \n ${issue.description}\n\n **💡 Suggestion:** \n ${issue.suggestion}\n </details>`;
+            // 👇 FIX: Replaced double newlines with <br> tags for robust rendering
+            issuesMarkdown += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary><br><br>**📁 File:** \`${issue.file}\`<br>**🔢 Line:** ${issue.line || 'N/A'}<br><br>**📝 Description:**<br>${issue.description}<br><br>**💡 Suggestion:**<br>${issue.suggestion}\n</details>`;
         }
         issuesMarkdown += `\n</details>`;
         summaryParts.push(issuesMarkdown);

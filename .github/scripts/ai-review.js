@@ -461,6 +461,61 @@ function getGitDiff() {
 }
 
 /**
+ * Gets the git diff and changed files for the current pull request using the Octokit library.
+ * This is more robust and efficient than shelling out to the git CLI.
+ * @param {object} octokit - An authenticated Octokit instance.
+ * @param {string} owner - The repository owner.
+ * @param {string} repo - The repository name.
+ * @param {number} prNumber - The pull request number.
+ * @returns {Promise<{diff: string, changedFiles: string[]}|null>} An object with the diff and changed files, or null if the review should be skipped.
+ */
+async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
+    try {
+        // First, check if the action should run based on the event payload
+        const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+        const allowedActions = ['opened', 'synchronize'];
+        if (!process.env.GITHUB_BASE_REF || !allowedActions.includes(event.action)) {
+            console.log(`Skipping AI review for action: '${event.action}'.`);
+            return null;
+        }
+
+        console.log("Fetching diff and file list using the GitHub API...");
+
+        // 1. Get the raw diff content for the pull request
+        const { data: diff } = await octokit.rest.pulls.get({
+            owner,
+            repo,
+            pull_number: prNumber,
+            mediaType: {
+                format: 'diff'
+            }
+        });
+
+        if (!diff || !diff.trim()) {
+            console.log("No changes detected in the diff. Skipping AI review.");
+            return null;
+        }
+
+        // 2. Get the list of changed files for more reliable filtering
+        const { data: files } = await octokit.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number: prNumber,
+        });
+
+        const changedFiles = files.map(file => file.filename);
+
+        console.log("Changed files:", changedFiles);
+        return { diff, changedFiles };
+
+    } catch (e) {
+        console.error("Failed to get git diff using Octokit:", e.message);
+        // We throw the error to be caught by the top-level catch block
+        throw e;
+    }
+}
+
+/**
  * Generates a Markdown summary of the entire code review.
  * @param {string[]} overallSummaries An array of summary strings from the AI.
  * @param {Set<string|object>} allHighlights A set of all highlight items.
@@ -679,9 +734,28 @@ async function submitStaleReviews(octokit, owner, repo, prNumber) {
  * @returns {Promise<void>}
  */
 async function reviewCode() {
-    const { diff: fullDiff, changedFiles } = getGitDiff();
-    const fileChunks = splitDiffByFileChunks(fullDiff);
+    const octokit = github.getOctokit(GITHUB_TOKEN);
+    const [owner, repo] = GITHUB_REPOSITORY.split('/');
+    const prNumber = github.context.payload.pull_request?.number;
+    if (!prNumber) {
+        console.error("Could not determine PR number.");
+        process.exit(1);
+    }
+    const commitId = github.context.payload.pull_request?.head?.sha;
+    if (!commitId) {
+        console.error("Could not determine commit ID.");
+        process.exit(1);
+    }
 
+    const diffResult = await getGitDiffWithOctokit(octokit, owner, repo, prNumber);
+    if (!diffResult) {
+        process.exit(0);
+    }
+    const { diff: fullDiff, changedFiles } = diffResult;
+    
+    await submitStaleReviews(octokit, owner, repo, prNumber);
+    
+    const fileChunks = splitDiffByFileChunks(fullDiff);
     const allIssues = [], allHighlights = new Set(), overallSummaries = [];
     const baseDiffPromptTokens = estimateTokens(buildDiffReviewPrompt(""));
     const baseFunctionPromptTokens = estimateTokens(buildFunctionReviewPrompt(""));
@@ -739,17 +813,6 @@ async function reviewCode() {
         }
         console.log(`--- Finished reviewing file: ${filePath}`);
     }
-
-    const octokit = github.getOctokit(GITHUB_TOKEN);
-    const [owner, repo] = GITHUB_REPOSITORY.split('/');
-    const prNumber = github.context.payload.pull_request?.number;
-    if (!prNumber) { console.error("Could not determine PR number."); process.exit(1); }
-    const commitId = github.context.payload.pull_request?.head?.sha;
-    if (!commitId) { console.error("Could not determine commit ID."); process.exit(1); }
-
-    // --- FIX: Add this call to clean up before proceeding ---
-    await submitStaleReviews(octokit, owner, repo, prNumber);
-    // --- END FIX ---
 
     const filteredIssues = allIssues.filter(issue => changedFiles.includes(issue.file));
     const summaryMarkdown = generateReviewSummary(overallSummaries, allHighlights, filteredIssues);

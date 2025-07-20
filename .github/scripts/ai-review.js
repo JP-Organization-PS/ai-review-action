@@ -516,8 +516,8 @@ async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
 }
 
 /**
- * Generates a high-level Markdown summary of the code review.
- * The detailed issues are posted as inline comments separately.
+ * Generates a Markdown summary of the entire code review, including a detailed list of issues
+ * sorted by severity (Critical -> Major -> Minor -> Info). This version does not include emojis.
  */
 function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) {
     const highlightItems = [...allHighlights].map(p => {
@@ -530,12 +530,33 @@ function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) 
     }).join('\n');
 
     let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n") || 'No overall summary provided.'}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
-    
-    // Add a footer indicating where to find the detailed issues.
-    if (filteredIssues.length > 0) {
-        summary += `\n\n---\n\n*Found ${filteredIssues.length} issue(s). See inline comments for details.*`;
+
+    if (filteredIssues.length) {
+        // --- Sorting Logic ---
+        const severityOrder = {
+            'CRITICAL': 1,
+            'MAJOR': 2,
+            'MINOR': 3,
+            'INFO': 4
+        };
+
+        filteredIssues.sort((a, b) => {
+            const severityA = severityOrder[a.severity] || 99; // Default to a low priority
+            const severityB = severityOrder[b.severity] || 99;
+            return severityA - severityB;
+        });
+        // --- END: Sorting Logic ---
+
+        summary += `\n\n<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary><br>\n`;
+        
+        // This loop processes the sorted array
+        for (const issue of filteredIssues) {
+            // The emoji variable has been removed from the <summary> tag below
+            summary += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n **📁 File:** \`${issue.file}\` \n **🔢 Line:** ${issue.line || 'N/A'}\n\n **📝 Description:** \n ${issue.description}\n\n **💡 Suggestion:** \n ${issue.suggestion}\n </details>`;
+        }
+        summary += `\n</details>`;
     }
-    
+
     return summary;
 }
 

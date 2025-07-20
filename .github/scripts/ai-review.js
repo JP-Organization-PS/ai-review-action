@@ -554,12 +554,21 @@ function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) 
             return severityA - severityB;
         });
 
-        let issuesMarkdown = `<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary>\n`;
+        // Start with the outer details tag and an opening <ul> for the list
+        let issuesMarkdown = `<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary>\n\n<ul>\n`;
+
         for (const issue of filteredIssues) {
-            // 👇 FIX: Replaced double newlines with <br> tags for robust rendering
-            issuesMarkdown += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary><br><br>**📁 File:** \`${issue.file}\`<br>**🔢 Line:** ${issue.line || 'N/A'}<br><br>**📝 Description:**<br>${issue.description}<br><br>**💡 Suggestion:**<br>${issue.suggestion}\n</details>`;
+            // For each issue, create an <li> list item containing the inner <details>
+            issuesMarkdown += `<li>\n<details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n` +
+                            `**📁 File:** \`${issue.file}\` &nbsp; &nbsp; **🔢 Line:** ${issue.line || 'N/A'}\n\n` +
+                            `**📝 Description:**\n${issue.description}\n\n` +
+                            `**💡 Suggestion:**\n${issue.suggestion}\n\n` +
+                            `</details>\n</li>\n`;
         }
-        issuesMarkdown += `\n</details>`;
+
+        // Close the list and the main details tag
+        issuesMarkdown += `</ul>\n</details>`;
+        
         summaryParts.push(issuesMarkdown);
     }
 

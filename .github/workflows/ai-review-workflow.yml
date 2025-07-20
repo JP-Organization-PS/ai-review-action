@@ -56,4 +56,8 @@ jobs:
           AZURE_API_VERSION: ${{ vars.AZURE_API_VERSION || '2024-02-01' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
+          POST_REVIEW_SUMMARY : ${{ vars.POST_REVIEW_SUMMARY  || 'false' }}
+          POST_REVIEW_HIGHLIGHTS : ${{ vars.POST_REVIEW_HIGHLIGHTS  || 'true' }}
+          POST_DETECTED_ISSUES : ${{ vars.POST_DETECTED_ISSUES  || 'true' }}
+          
         run: node ./ai-review-action-repo/.github/scripts/ai-review.js

@@ -521,18 +521,22 @@ async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
  */
 function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) {
     const highlightItems = [...allHighlights].map(p => {
-        if (typeof p === 'string') return `- ${p}`;
+        if (typeof p === 'string') {
+            return `- ${p}`;
+        }
         if (typeof p === 'object' && p !== null) {
-            if (p.category && p.description) return `- ${p.category}: ${p.description}`;
+            if (p.category && p.description) {
+                return `- ${p.category}: ${p.description}`;
+            }
             return `- ${JSON.stringify(p)}`;
         }
         return `- ${p}`;
     }).join('\n');
 
-    let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n") || 'No overall summary provided.'}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
-
+    let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n")}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
+    
     if (filteredIssues.length) {
-        // --- Sorting Logic ---
+        // Define the desired order of severity.
         const severityOrder = {
             'CRITICAL': 1,
             'MAJOR': 2,
@@ -540,23 +544,22 @@ function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) 
             'INFO': 4
         };
 
+        // Sort the filteredIssues array based on the severityOrder map.
         filteredIssues.sort((a, b) => {
-            const severityA = severityOrder[a.severity] || 99; // Default to a low priority
+            const severityA = severityOrder[a.severity] || 99; // Use 99 for any unknown severities to place them at the end.
             const severityB = severityOrder[b.severity] || 99;
             return severityA - severityB;
         });
-        // --- END: Sorting Logic ---
 
         summary += `\n\n<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary><br>\n`;
         
-        // This loop processes the sorted array
+        // This loop processes the issues in the sorted order.
         for (const issue of filteredIssues) {
-            // The emoji variable has been removed from the <summary> tag below
-            summary += `\n- <details>\n <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n **📁 File:** \`${issue.file}\` \n **🔢 Line:** ${issue.line || 'N/A'}\n\n **📝 Description:** \n ${issue.description}\n\n **💡 Suggestion:** \n ${issue.suggestion}\n </details>`;
+            // The emoji variable has been removed from the summary string below.
+            summary += `\n- <details>\n  <summary><strong>${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n  **📁 File:** \`${issue.file}\` \n  **🔢 Line:** ${issue.line || 'N/A'}\n\n  **📝 Description:** \n  ${issue.description}\n\n  **💡 Suggestion:** \n  ${issue.suggestion}\n  </details>`;
         }
         summary += `\n</details>`;
     }
-
     return summary;
 }
 

@@ -516,42 +516,26 @@ async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
 }
 
 /**
- * Generates a Markdown summary of the entire code review.
- * @param {string[]} overallSummaries An array of summary strings from the AI.
- * @param {Set<string|object>} allHighlights A set of all highlight items.
- * @param {object[]} filteredIssues An array of issue objects relevant to the PR.
- * @returns {string} The formatted Markdown summary.
+ * Generates a high-level Markdown summary of the code review.
+ * The detailed issues are posted as inline comments separately.
  */
 function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) {
-    // FIX: Process highlights to handle both strings and objects.
     const highlightItems = [...allHighlights].map(p => {
-        if (typeof p === 'string') {
-            return `- ${p}`; // It's already a string, just use it.
-        }
+        if (typeof p === 'string') return `- ${p}`;
         if (typeof p === 'object' && p !== null) {
-            // If it's an object, try to format it from its properties.
-            if (p.category && p.description) {
-                return `- ${p.category}: ${p.description}`;
-            }
-            // As a fallback, convert the object to a JSON string.
+            if (p.category && p.description) return `- ${p.category}: ${p.description}`;
             return `- ${JSON.stringify(p)}`;
         }
-        return `- ${p}`; // Default for any other type.
+        return `- ${p}`;
     }).join('\n');
 
-    let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n")}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
+    let summary = `### AI Code Review Summary\n\n**📝 Overall Impression:**\n${overallSummaries.join("\n\n") || 'No overall summary provided.'}\n\n**✅ Highlights:**\n${highlightItems || 'No significant improvements noted.'}`;
     
-    if (filteredIssues.length) {
-        summary += `\n\n<details>\n<summary>⚠️ **Detected Issues (${filteredIssues.length})** — Click to expand</summary><br>\n`;
-        for (const issue of filteredIssues) {
-            let emoji = '🔵'; // Info
-            if (issue.severity === 'CRITICAL') emoji = '🔴';
-            else if (issue.severity === 'MAJOR') emoji = '🟠';
-            else if (issue.severity === 'MINOR') emoji = '🟡';
-            summary += `\n- <details>\n  <summary><strong>${emoji} ${issue.title}</strong> <em>(${issue.severity})</em></summary>\n\n  **📁 File:** \`${issue.file}\` \n  **🔢 Line:** ${issue.line || 'N/A'}\n\n  **📝 Description:** \n  ${issue.description}\n\n  **💡 Suggestion:** \n  ${issue.suggestion}\n  </details>`;
-        }
-        summary += `\n</details>`;
+    // Add a footer indicating where to find the detailed issues.
+    if (filteredIssues.length > 0) {
+        summary += `\n\n---\n\n*Found ${filteredIssues.length} issue(s). See inline comments for details.*`;
     }
+    
     return summary;
 }
 

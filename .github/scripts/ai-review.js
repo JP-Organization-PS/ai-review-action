@@ -528,7 +528,7 @@ function generateReviewSummary(overallSummaries, allHighlights, filteredIssues) 
     let summaryParts = [];
 
     // Conditionally add the "Overall Impression" section
-    if (POST_REVIEW_SUMMARY && overallSummaries.length > 0) {
+    if (POST_REVIEW_SUMMARY) {
         summaryParts.push(`**📝 Overall Impression:**\n${overallSummaries.join("\n\n")}`);
     }
 

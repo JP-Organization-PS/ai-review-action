@@ -27,7 +27,7 @@ const GEMINI_ENDPOINT_BASE = process.env.GEMINI_ENDPOINT_BASE;
 const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME;
 
 // NEW: Configuration flags for summary sections
-const POST_REVIEW_SUMMARY = process.env.POST_REVIEW_SUMMARY !== 'true';
+const POST_REVIEW_SUMMARY = 'false';
 const POST_REVIEW_HIGHLIGHTS = process.env.POST_REVIEW_HIGHLIGHTS !== 'false';
 const POST_DETECTED_ISSUES = process.env.POST_DETECTED_ISSUES !== 'false';
 

@@ -59,5 +59,6 @@ jobs:
           POST_REVIEW_SUMMARY : ${{ vars.POST_REVIEW_SUMMARY  || 'false' }}
           POST_REVIEW_HIGHLIGHTS : ${{ vars.POST_REVIEW_HIGHLIGHTS  || 'true' }}
           POST_DETECTED_ISSUES : ${{ vars.POST_DETECTED_ISSUES  || 'true' }}
+          ISSUE_SEVERITY_FILTER: 'CRITICAL,MAJOR'
           
         run: node ./ai-review-action-repo/.github/scripts/ai-review.js

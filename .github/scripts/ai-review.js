@@ -26,10 +26,11 @@ const AZURE_API_VERSION = process.env.AZURE_API_VERSION;
 const GEMINI_ENDPOINT_BASE = process.env.GEMINI_ENDPOINT_BASE;
 const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME;
 
-// NEW: Configuration flags for summary sections
 const POST_REVIEW_SUMMARY = process.env.POST_REVIEW_SUMMARY !== 'false';
 const POST_REVIEW_HIGHLIGHTS = process.env.POST_REVIEW_HIGHLIGHTS !== 'false';
 const POST_DETECTED_ISSUES = process.env.POST_DETECTED_ISSUES !== 'false';
+
+const ISSUE_SEVERITY_FILTER = process.env.ISSUE_SEVERITY_FILTER;
 
 // --- Log Configuration at Startup ---
 console.log('==============================');
@@ -44,6 +45,7 @@ console.log('AZURE_API_VERSION:', AZURE_API_VERSION);
 console.log('POST_REVIEW_SUMMARY:', POST_REVIEW_SUMMARY);
 console.log('POST_REVIEW_HIGHLIGHTS:', POST_REVIEW_HIGHLIGHTS);
 console.log('POST_DETECTED_ISSUES:', POST_DETECTED_ISSUES);
+console.log('ISSUE_SEVERITY_FILTER:', ISSUE_SEVERITY_FILTER); 
 console.log('==============================');
 
 const AZURE_CONFIG = {
@@ -127,6 +129,46 @@ const LANGUAGE_CONFIG = {
  */
 function estimateTokens(text) {
     return Math.ceil(text.length / 4);
+}
+
+/**
+ * Generates the dynamic description for the 'severity' field in the prompt's example JSON.
+ * This ensures the example in the prompt aligns perfectly with the filtering instruction.
+ * * @param {string} filterConfig The comma-separated string of severities from the environment variable (e.g., "CRITICAL,MAJOR").
+ * @returns {string} The description text for the AI to use in the 'severity' field example.
+ */
+function generateSeverityFieldDescription(filterConfig) {
+    // A map of severity levels to their meanings. This helps build a helpful description.
+    const severityMeanings = {
+        INFO: "Use [INFO] for minor style, readability, micro-optimizations, or best practice suggestions.",
+        MINOR: "Use [MINOR] for issues that have a small impact or are not urgent.",
+        MAJOR: "Use [MAJOR] for significant issues that should be addressed, such as potential bugs or design flaws.",
+        CRITICAL: "Use [CRITICAL] for immediate, show-stopping bugs, severe security vulnerabilities, or guaranteed crashes/resource exhaustion."
+    };
+
+    // The default description to use when no filter is applied.
+    const defaultDescription = `Assign the most appropriate severity tag from: [INFO], [MINOR], [MAJOR], [CRITICAL]. ${severityMeanings.INFO} ${severityMeanings.MINOR} ${severityMeanings.MAJOR} ${severityMeanings.CRITICAL}`;
+
+    // If the filter config is missing or empty, return the default description.
+    if (!filterConfig || filterConfig.trim() === '') {
+        return defaultDescription;
+    }
+
+    // Parse the filter string into a clean array of uppercase severity levels.
+    const severities = filterConfig.split(',')
+        .map(s => s.trim().toUpperCase())
+        .filter(s => s); // Filter out any empty strings that might result from trailing commas.
+
+    // If parsing results in a valid list of severities, build a custom description.
+    if (severities.length > 0) {
+        // Get the descriptions for only the allowed severities.
+        const allowedMeanings = severities.map(s => severityMeanings[s]).filter(Boolean).join(' ');
+        // Construct the final, targeted description string.
+        return `Assign a severity tag from the allowed list: [${severities.join(', ')}]. ${allowedMeanings}`;
+    }
+    
+    // Fallback to the default description if the filter config was invalid (e.g., just commas).
+    return defaultDescription;
 }
 
 /**
@@ -348,7 +390,7 @@ Your JSON response must follow this exact structure:
   ],
   "issues": [
     {
-      "severity": "Assign the most appropriate severity tag from: [INFO], [MINOR], [MAJOR], [CRITICAL]. Use [INFO] **liberally** for even very minor style, readability, micro-optimizations, or best practice suggestions. Use [CRITICAL] for immediate, show-stopping bugs, severe security vulnerabilities, or guaranteed crashes/resource exhaustion.",
+      "severity": "{{SEVERITY_FILTER_INSTRUCTION}}",
       "title": "A concise and highly descriptive title for the issue (e.g., 'Missing Input Type/Range Validation', 'Broad Exception Catch Masking Errors', 'Potential Floating-Point Imprecision', 'Unbounded Computation for Large Exponents', 'Inconsistent Naming Convention').",
       "description": "A detailed explanation of the problem, its root cause, and its potential impact (e.g., 'This can lead to a denial-of-service attack due to unbounded computation time when Y is large.'). Be explicit about why it's an issue and the real-world consequences.",
       "suggestion": "A clear, actionable recommendation for improvement, explaining the benefits of the suggested change and how it effectively addresses the identified issue. Refer to the 'proposed_code_snippet' for implementation details. Include best practices, alternative design patterns, or library recommendations.",
@@ -367,7 +409,13 @@ Respond with a single valid JSON object only. Do not include Markdown, code bloc
  * @returns {string} The complete prompt for the AI model.
  */
 function buildDiffReviewPrompt(diff) {
-    return `${PROMPT_BASE}\n\nAnalyze the following code diff. The 'code_snippet' you return must be an exact copy of lines from the diff.\n\nHere is the code diff:\n\n${diff}`;
+    const severityInstruction = generateSeverityFieldDescription(ISSUE_SEVERITY_FILTER);
+    const finalPrompt = PROMPT_BASE
+    .replace('{{SEVERITY_FILTER_INSTRUCTION}}', severityInstruction);
+    console.log('--- Generated AI Base Prompt ---');
+    console.log(finalPrompt); // Log the base prompt for debugging
+    console.log('--- End of Base Prompt ---');
+    return `${finalPrompt}\n\nAnalyze the following code diff. The 'code_snippet' you return must be an exact copy of lines from the diff.\n\nHere is the code diff:\n\n${diff}`;
 }
 
 /**
@@ -376,7 +424,13 @@ function buildDiffReviewPrompt(diff) {
  * @returns {string} The complete prompt for the AI model.
  */
 function buildFunctionReviewPrompt(functionCode) {
-    return `${PROMPT_BASE}\n\nInstead of a diff, you are provided with the complete source code of a function that was modified in a pull request. Analyze the entire function for any potential issues. The 'code_snippet' you return must be an exact copy of lines from the provided function code.\n\nHere is the full function code:\n\`\`\`\n${functionCode}\n\`\`\`\n`;
+    const severityInstruction = generateSeverityFieldDescription(ISSUE_SEVERITY_FILTER);
+    const finalPrompt = PROMPT_BASE
+    .replace('{{SEVERITY_FILTER_INSTRUCTION}}', severityInstruction);
+    console.log('--- Generated AI Base Prompt ---');
+    console.log(finalPrompt); // Log the base prompt for debugging
+    console.log('--- End of Base Prompt ---');
+    return `${finalPrompt}\n\nInstead of a diff, you are provided with the complete source code of a function that was modified in a pull request. Analyze the entire function for any potential issues. The 'code_snippet' you return must be an exact copy of lines from the provided function code.\n\nHere is the full function code:\n\`\`\`\n${functionCode}\n\`\`\`\n`;
 }
 
 
@@ -822,7 +876,9 @@ async function reviewCode() {
             let reviewRaw;
             try {
                 reviewRaw = await callAIModel(AI_MODEL, prompt, promptTokens);
-            } catch (error) { continue; }
+            } catch (error) { 
+                console.error(`Skipping review process for this chunk due to a critical API failure for file: ${chunk.filePath}.`);
+            }
             if (!reviewRaw) { console.error(`Received empty response from AI for ${chunk.filePath}.`); continue; }
 
             try {

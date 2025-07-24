@@ -523,6 +523,85 @@ function getGitDiff() {
 }
 
 /**
+ * Gets the git diff and changed files.
+ * - For 'opened' PRs, it gets the full diff against the base branch.
+ * - For 'synchronize' PRs, it gets the diff for ONLY the latest commit.
+ * @param {object} octokit - An authenticated Octokit instance.
+ * @param {string} owner - The repository owner.
+ * @param {string} repo - The repository name.
+ * @param {number} prNumber - The pull request number.
+ * @returns {Promise<{diff: string, changedFiles: string[]}|null>} An object with the diff and changed files, or null if the review should be skipped.
+ */
+async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
+    try {
+        const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+        const allowedActions = ['opened', 'synchronize'];
+        if (!process.env.GITHUB_BASE_REF || !allowedActions.includes(event.action)) {
+            console.log(`Skipping AI review for action: '${event.action}'.`);
+            return null;
+        }
+
+        let diff, changedFiles;
+
+        if (event.action === 'synchronize') {
+            // --- LOGIC FOR LATEST COMMIT ---
+            console.log("Action is 'synchronize'. Fetching diff for the latest commit only...");
+            
+            const baseSha = event.before; // The commit SHA before the push
+            const headSha = event.after;  // The commit SHA after the push
+
+            const { data: comparison } = await octokit.rest.repos.compareCommits({
+                owner,
+                repo,
+                base: baseSha,
+                head: headSha,
+                mediaType: {
+                    format: 'diff'
+                }
+            });
+
+            diff = comparison; // The API response with format: 'diff' is the raw diff string
+            
+            // We need to refetch the file list from the comparison object
+            const { data: filesData } = await octokit.rest.repos.compareCommits({ owner, repo, base: baseSha, head: headSha });
+            changedFiles = filesData.files.map(file => file.filename);
+
+        } else {
+            // --- ORIGINAL LOGIC FOR FULL PR ---
+            console.log("Action is 'opened'. Fetching the full pull request diff...");
+            const { data: prDiff } = await octokit.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber,
+                mediaType: {
+                    format: 'diff'
+                }
+            });
+            diff = prDiff;
+
+            const { data: files } = await octokit.rest.pulls.listFiles({
+                owner,
+                repo,
+                pull_number: prNumber,
+            });
+            changedFiles = files.map(file => file.filename);
+        }
+
+        if (!diff || (typeof diff === 'string' && !diff.trim())) {
+            console.log("No changes detected in the diff. Skipping AI review.");
+            return null;
+        }
+
+        console.log("Changed files:", changedFiles);
+        return { diff, changedFiles };
+
+    } catch (e) {
+        console.error("Failed to get git diff using Octokit:", e.message);
+        throw e;
+    }
+}
+
+/**
  * Gets the git diff and changed files for the current pull request using the Octokit library.
  * This is more robust and efficient than shelling out to the git CLI.
  * @param {object} octokit - An authenticated Octokit instance.
@@ -531,7 +610,7 @@ function getGitDiff() {
  * @param {number} prNumber - The pull request number.
  * @returns {Promise<{diff: string, changedFiles: string[]}|null>} An object with the diff and changed files, or null if the review should be skipped.
  */
-async function getGitDiffWithOctokit(octokit, owner, repo, prNumber) {
+async function getGitDiffWithOctokitold(octokit, owner, repo, prNumber) {
     try {
         // First, check if the action should run based on the event payload
         const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));

@@ -381,6 +381,9 @@ IMPORTANT GUIDELINES FOR YOUR ANALYSIS AND OUTPUT:
 - **Detailed Explanations**: For each issue, provide a clear, concise, and thorough 'description' of the problem, its root cause, and its potential impact (e.g., data corruption, performance degradation, security breach, maintainability burden). In the 'suggestion' field, explain the 'why' and 'benefit' of your proposed change, including the rationale for any new code.
 - **No External References**: Do not reference files, functions, or concepts that are not explicitly present within the provided diff's context.
 - **Focus on Provided Code**: All identified issues and suggestions must be directly observable or logically inferable from the code provided in the diff.
+- **Be Concise**: Your 'description' and 'suggestion' fields MUST be direct and to the point. Avoid verbose explanations. Aim for 2-4 sentences for each.
+- **Minimal Code Snippets**: The 'proposed_code_snippet' should ONLY contain the minimum code required to demonstrate the fix. Do NOT include the entire function or class unless it is absolutely necessary for context.
+- **Strict Adherence to Brevity**: Your top priority, after accuracy, is brevity. Overly long responses will be rejected.
 
 Your JSON response must follow this exact structure:
 {
@@ -703,6 +706,95 @@ async function postIssueComments(octokit, owner, repo, prNumber, commitId, issue
 }
 
 /**
+ * Posts the complete review, including a summary and all inline comments, in smaller batches to avoid API errors.
+ * @param {object} octokit An authenticated Octokit instance.
+ * @param {string} owner The repository owner.
+ * @param {string} repo The repository name.
+ * @param {number} prNumber The pull request number.
+ * @param {string} commitId The SHA of the head commit.
+ * @param {string} summaryMarkdown The Markdown summary for the review.
+ * @param {object[]} issues An array of issue objects to comment on.
+ * @param {string} fullDiff The entire git diff string for snippet matching.
+ * @returns {Promise<void>}
+ */
+async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, summaryMarkdown, issues, fullDiff) {
+    const BATCH_SIZE = 1; // Submit comments in batches of 25 to stay under API limits.
+    const reviewComments = [];
+
+    // First, build the complete list of comment objects
+    for (const issue of issues) {
+        let commentLine;
+        const body = `**AI Suggestion: ${issue.title}** (${issue.severity})\n\n${issue.description}\n\n**Suggestion:**\n${issue.suggestion}\n\n${issue.proposed_code_snippet ? `\`\`\`suggestion\n${issue.proposed_code_snippet}\n\`\`\`` : ''}`;
+
+        if (issue.chunkType === 'function') {
+            commentLine = issue.functionStartLine;
+        } else {
+            const snippetLocation = matchSnippetFromDiff(fullDiff, issue.file, issue.code_snippet);
+            if (snippetLocation) {
+                commentLine = snippetLocation.start;
+            } else {
+                console.warn(`Could not find exact diff location for "${issue.title}" in ${issue.file}. Skipping inline comment.`);
+                continue;
+            }
+        }
+
+        if (commentLine) {
+            reviewComments.push({
+                path: issue.file,
+                line: commentLine,
+                side: 'RIGHT',
+                body: body
+            });
+        }
+    }
+
+    console.log(`Total comments to post: ${reviewComments.length}`);
+    console.log(`Summary size: ${summaryMarkdown.length} characters.`);
+
+    try {
+        // 1. Post the main summary comment first. This is a small and safe call.
+        // If there's no summary and no comments, we don't need to do anything.
+        if (summaryMarkdown && summaryMarkdown.trim()) {
+            await octokit.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: prNumber,
+                commit_id: commitId,
+                event: 'COMMENT',
+                body: summaryMarkdown,
+            });
+            console.log('Successfully posted the main review summary.');
+        }
+
+        // 2. Post inline comments in batches.
+        for (let i = 0; i < reviewComments.length; i += BATCH_SIZE) {
+            const batch = reviewComments.slice(i, i + BATCH_SIZE);
+            console.log(`Submitting a batch of ${batch.length} inline comments...`);
+
+            await octokit.rest.pulls.createReview({
+                owner,
+                repo,
+                pull_number: prNumber,
+                commit_id: commitId,
+                event: 'COMMENT', // This event just adds comments without changing the PR state
+                comments: batch,
+            });
+            console.log(`Successfully submitted batch ${Math.floor(i / BATCH_SIZE) + 1}.`);
+        }
+
+        if (reviewComments.length > 0) {
+            console.log('All inline comments have been successfully posted.');
+        }
+
+    } catch (error) {
+        console.error('Failed to submit a part of the review:', error.message);
+        // Even if one batch fails, subsequent code might still run,
+        // so it's important to re-throw or handle it appropriately.
+        throw error;
+    }
+}
+
+/**
  * Posts the complete review, including a summary and all inline comments, in a single API call.
  * This is the correct way to avoid API errors and multiple notifications.
  * @param {object} octokit An authenticated Octokit instance.
@@ -715,7 +807,7 @@ async function postIssueComments(octokit, owner, repo, prNumber, commitId, issue
  * @param {string} fullDiff The entire git diff string for snippet matching.
  * @returns {Promise<void>}
  */
-async function postAllIssueComments(octokit, owner, repo, prNumber, commitId, summaryMarkdown, issues, fullDiff) {
+async function postAllIssueCommentsOld(octokit, owner, repo, prNumber, commitId, summaryMarkdown, issues, fullDiff) {
     const reviewComments = [];
 
     // Build the array of inline comment objects

@@ -46,14 +46,14 @@ jobs:
       - name: Run AI Code Review
         env:
           # Using fallbacks for variables makes the workflow more resilient
-          AI_MODEL: ${{ vars.AI_MODEL || 'gemini' }}
+          AI_MODEL: ${{ vars.AI_MODEL || 'azure' }}
           GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME || 'gemini-pro' }}
           GEMINI_ENDPOINT_BASE: ${{ vars.GEMINI_ENDPOINT_BASE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
-          AZURE_API_VERSION: ${{ vars.AZURE_API_VERSION || '2024-02-01' }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT || 'o4-mini'}}
+          AZURE_API_VERSION: ${{ vars.AZURE_API_VERSION || '2025-01-01-preview' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
           POST_REVIEW_SUMMARY : ${{ vars.POST_REVIEW_SUMMARY  || 'false' }}

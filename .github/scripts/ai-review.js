@@ -415,9 +415,9 @@ function buildDiffReviewPrompt(diff) {
     const severityInstruction = generateSeverityFieldDescription(ISSUE_SEVERITY_FILTER);
     const finalPrompt = PROMPT_BASE
     .replace('{{SEVERITY_FILTER_INSTRUCTION}}', severityInstruction);
-    console.log('--- Generated AI Base Prompt ---');
-    console.log(finalPrompt); // Log the base prompt for debugging
-    console.log('--- End of Base Prompt ---');
+    //console.log('--- Generated AI Base Prompt ---');
+    //console.log(finalPrompt); // Log the base prompt for debugging
+    //console.log('--- End of Base Prompt ---');
     return `${finalPrompt}\n\nAnalyze the following code diff. The 'code_snippet' you return must be an exact copy of lines from the diff.\n\nHere is the code diff:\n\n${diff}`;
 }
 
@@ -430,9 +430,9 @@ function buildFunctionReviewPrompt(functionCode) {
     const severityInstruction = generateSeverityFieldDescription(ISSUE_SEVERITY_FILTER);
     const finalPrompt = PROMPT_BASE
     .replace('{{SEVERITY_FILTER_INSTRUCTION}}', severityInstruction);
-    console.log('--- Generated AI Base Prompt ---');
-    console.log(finalPrompt); // Log the base prompt for debugging
-    console.log('--- End of Base Prompt ---');
+    //console.log('--- Generated AI Base Prompt ---');
+    //console.log(finalPrompt); // Log the base prompt for debugging
+    //console.log('--- End of Base Prompt ---');
     return `${finalPrompt}\n\nInstead of a diff, you are provided with the complete source code of a function that was modified in a pull request. Analyze the entire function for any potential issues. The 'code_snippet' you return must be an exact copy of lines from the provided function code.\n\nHere is the full function code:\n\`\`\`\n${functionCode}\n\`\`\`\n`;
 }
 
